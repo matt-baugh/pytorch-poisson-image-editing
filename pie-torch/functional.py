@@ -7,17 +7,21 @@ from torch import Tensor
 
 PAD_AMOUNT = 4
 stability_value = 1e-8
+INTEGRATION_MODES = ['origin']  # TODO: Implement more, test results
 
 
 def blend(target: Tensor, source: Tensor, mask: Tensor, mode: str, batch_dim: int = None, channels_dim: int = None,
-          green_function: Tensor = None, pad_mode: str = 'constant'):
+          green_function: Tensor = None, pad_mode: str = 'constant', integration_mode: str = 'origin'):
     # If green_function is provided, it should match the padded image size
+    num_dims = len(target.shape)
+    assert integration_mode in INTEGRATION_MODES, f'Invalid integration mode {integration_mode}, should be one of ' \
+                                                  f'{INTEGRATION_MODES}'
 
     # determine dimensions to operate on
-    chosen_dimensions = [d for d in range(len(target.shape)) if d != batch_dim and d != channels_dim]
+    chosen_dimensions = [d for d in range(num_dims) if d != batch_dim and d != channels_dim]
 
     # Pad images in operating dimensions
-    pad_amounts = [PAD_AMOUNT if d in chosen_dimensions else 0 for d in range(len(target.shape))]
+    pad_amounts = [PAD_AMOUNT if d in chosen_dimensions else 0 for d in range(num_dims)]
     pad = tuple(chain(*[[p, p] for p in reversed(pad_amounts)]))
 
     target_pad = F.pad(target, pad, pad_mode)
@@ -39,12 +43,32 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mode: str, batch_dim: in
                           dim=0)
 
     # Compute green function if not provided
+    if green_function is None:
+        green_function = construct_green_function(laplacian.shape, batch_dim, channels_dim, requires_pad=False)
+    else:
+        for d in range(num_dims):
+            if d in chosen_dimensions:
+                assert green_function.shape[d] == laplacian.shape[d], f'Green function has mismatched shape on ' \
+                                                                      f'dimension {d}: expected {laplacian.shape[d]},' \
+                                                                      f' got {green_function.shape[d]}.'
+            else:
+                assert green_function.shape[d] == 1, f'Green function should have size 1 in non-chosen dimension ' \
+                                                     f'{d}: has {green_function.shape[d]}.'
 
     # Apply green function convolution
+    init_blended = torch.fft.ifftn(torch.fft.fftn(laplacian, dim=chosen_dimensions) * green_function,
+                                   dim=chosen_dimensions)
 
     # Use boundaries to determine integration constant, and extract inner blended image
+    if integration_mode == 'origin':
+        integration_constant = init_blended[tuple([0] * num_dims)]
+    else:
+        assert False, 'Invalid integration constant, how did you get here?'
 
-    return None
+    inner_blended = init_blended[tuple([slice(PAD_AMOUNT, -PAD_AMOUNT) if i in chosen_dimensions else slice(s)
+                                 for i, s in enumerate(init_blended.shape)])]
+
+    return inner_blended - integration_constant
 
 
 def compute_gradient(image: Tensor, dim: int):
@@ -76,8 +100,6 @@ def construct_green_function(shape: Tuple[int], batch_dim: int = None, channels_
         for i in [0, 2]:
             laplace_kernel[tuple([i if d == c_d else k for d, k in enumerate(kernel_centre)])] = -1
 
-    dirac_kernel_fft = torch.fft.fftn(dirac_kernel, dim=tuple(chosen_dimensions))
-    laplace_kernel_fft = torch.fft.fftn(laplace_kernel, dim=tuple(chosen_dimensions))
+    dirac_kernel_fft = torch.fft.fftn(dirac_kernel, dim=chosen_dimensions)
+    laplace_kernel_fft = torch.fft.fftn(laplace_kernel, dim=chosen_dimensions)
     return -dirac_kernel_fft / (laplace_kernel_fft + stability_value)
-
-
