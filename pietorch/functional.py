@@ -28,13 +28,15 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mode: str, batch_dim: in
     source_pad = F.pad(source, pad, pad_mode)
 
     # Pad with zeroes, as don't blend within padded region
-    mask_pad = F.pad(mask, pad, 'constant')
+    if channels_dim is not None:
+        del pad_amounts[channels_dim]
+        pad = tuple(chain(*[[p, p] for p in reversed(pad_amounts)]))
 
     # Compute gradients
     target_grads = [compute_gradient(target_pad, d) for d in chosen_dimensions]
     source_grads = [compute_gradient(source_pad, d) for d in chosen_dimensions]
 
-    # Blend gradients
+    # Blend gradients (MIXING IS DONE AT INDIVIDUAL DIMENSION LEVEL!
     blended_grads = target_grads
 
     # Compute laplacian
@@ -71,18 +73,19 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mode: str, batch_dim: in
     return inner_blended - integration_constant
 
 
-def compute_gradient(image: Tensor, dim: int):
-    num_dims = len(image.shape)
-    trailing_dimensions = num_dims - 1 - dim
-    pad = tuple([1, 1] + [0] * (2 * trailing_dimensions))
-    image_pad = F.pad(image, pad, mode='replicate')
+def compute_gradient(image: Tensor, dim: int) -> Tensor:
+    image_pad = torch.cat([image[tuple([slice(1) if i == dim else slice(s) for i, s in enumerate(image.shape)])],
+                           image,
+                           image[tuple([slice(-1, s) if i == dim else slice(s) for i, s in enumerate(image.shape)])]],
+                          dim=dim)
 
     front = image_pad[tuple([slice(2 if i == dim else 0, s) for i, s in enumerate(image_pad.shape)])]
     back = image_pad[tuple([slice(0, -2 if i == dim else s) for i, s in enumerate(image_pad.shape)])]
     return (front - back) / 2
 
 
-def construct_green_function(shape: Tuple[int], batch_dim: int = None, channels_dim: int = None, requires_pad=True):
+def construct_green_function(shape: Tuple[int], batch_dim: int = None, channels_dim: int = None, requires_pad=True)\
+        -> Tensor:
     num_dims = len(shape)
     chosen_dimensions = [d for d in range(num_dims) if d != batch_dim and d != channels_dim]
 
