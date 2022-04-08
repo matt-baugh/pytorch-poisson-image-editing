@@ -10,7 +10,7 @@ stability_value = 1e-8
 INTEGRATION_MODES = ['origin']  # TODO: Implement more, test results
 
 
-def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, batch_dim: int = None, channels_dim: int = None,
+def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, channels_dim: int = None,
           green_function: Tensor = None, integration_mode: str = 'origin'):
     # If green_function is provided, it should match the padded image size
     num_dims = len(target.shape)
@@ -18,7 +18,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, bat
                                                   f'{INTEGRATION_MODES}'
 
     # determine dimensions to operate on
-    chosen_dimensions = [d for d in range(num_dims) if d != batch_dim and d != channels_dim]
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
 
     # Pad images in operating dimensions
     pad_amounts = [PAD_AMOUNT if d in chosen_dimensions else 0 for d in range(num_dims)]
@@ -38,15 +38,14 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, bat
     source_grads = [compute_gradient(source_pad, d) for d in chosen_dimensions]
 
     if mix_gradients:
-        source_grads = [torch.maximum(t_g, s_g) for t_g, s_g in zip(target_grads, source_grads)]
+        t_g_abs = torch.sum(torch.stack([torch.pow(t_g, 2) for t_g in target_grads]), dim=0)
+        s_g_abs = torch.sum(torch.stack([torch.pow(s_g, 2) for s_g in source_grads]), dim=0)
+        t_g_ge = torch.ge(t_g_abs, s_g_abs)
+        source_grads = [torch.where(t_g_ge, t_g, s_g) for t_g, s_g in zip(target_grads, source_grads)]
 
     # Blend gradients (MIXING IS DONE AT INDIVIDUAL DIMENSION LEVEL!
-    if batch_dim is not None and channels_dim is not None:
-        mask_pad = mask_pad.unsqueeze(min(channels_dim, batch_dim))
-        mask_pad = mask_pad.unsqueeze(max(channels_dim, batch_dim))
-    elif batch_dim is not None:
-        mask_pad = mask_pad.unsqueeze(batch_dim)
-    elif channels_dim is not None:
+    # TODO: errode mask first
+    if channels_dim is not None:
         mask_pad = mask_pad.unsqueeze(channels_dim)
 
     blended_grads = [t_g * (1 - mask_pad) + s_g * mask_pad for t_g, s_g in zip(target_grads, source_grads)]
@@ -58,7 +57,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, bat
 
     # Compute green function if not provided
     if green_function is None:
-        green_function = construct_green_function(laplacian.shape, batch_dim, channels_dim, requires_pad=False)
+        green_function = construct_green_function(laplacian.shape, channels_dim, requires_pad=False)
     else:
         for d in range(num_dims):
             if d in chosen_dimensions:
@@ -75,7 +74,8 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, bat
 
     # Use boundaries to determine integration constant, and extract inner blended image
     if integration_mode == 'origin':
-        integration_constant = init_blended[tuple([0] * num_dims)]
+        integration_constant = init_blended[tuple([slice(1) if i in chosen_dimensions else slice(s)
+                                                   for i, s in enumerate(init_blended.shape)])]
     else:
         assert False, 'Invalid integration constant, how did you get here?'
 
@@ -86,20 +86,20 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, bat
 
 
 def compute_gradient(image: Tensor, dim: int) -> Tensor:
-    image_pad = torch.cat([image[tuple([slice(1) if i == dim else slice(s) for i, s in enumerate(image.shape)])],
-                           image,
-                           image[tuple([slice(-1, s) if i == dim else slice(s) for i, s in enumerate(image.shape)])]],
+    # Equivalent to reflect padding for F.pad (sadly that doesn't implement arbitrary dimensions)
+    image_pad = torch.cat([image[tuple([slice(1, 2) if i == dim else slice(s) for i, s in enumerate(image.shape)])],
+                           image],
                           dim=dim)
 
-    front = image_pad[tuple([slice(2 if i == dim else 0, s) for i, s in enumerate(image_pad.shape)])]
-    back = image_pad[tuple([slice(0, -2 if i == dim else s) for i, s in enumerate(image_pad.shape)])]
-    return (front - back) / 2
+    front = image_pad[tuple([slice(1 if i == dim else 0, s) for i, s in enumerate(image_pad.shape)])]
+    back = image_pad[tuple([slice(0, -1 if i == dim else s) for i, s in enumerate(image_pad.shape)])]
+    return front - back
 
 
-def construct_green_function(shape: Tuple[int], batch_dim: int = None, channels_dim: int = None, requires_pad=True)\
+def construct_green_function(shape: Tuple[int], channels_dim: int = None, requires_pad=True)\
         -> Tensor:
     num_dims = len(shape)
-    chosen_dimensions = [d for d in range(num_dims) if d != batch_dim and d != channels_dim]
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
     # Aim is to match chosen dimensions of input shape (padding if necessary), but set others to size 1.
     padding = 2 * PAD_AMOUNT if requires_pad else 0
     shape = [(s + padding) if i in chosen_dimensions else 1 for i, s in enumerate(shape)]

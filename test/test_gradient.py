@@ -19,7 +19,7 @@ def test_gradient_shape_unchanged(num_dims):
 def test_gradient_1D():
     arr_len = 5
     x = torch.arange(5)
-    expected = torch.tensor([0.5] + [1.] * (arr_len - 2) + [0.5])
+    expected = torch.tensor([-1] + [1.] * (arr_len - 1))
 
     assert (expected == compute_gradient(x, 0)).all(), 'Flat gradient incorrect.'
 
@@ -36,7 +36,7 @@ def test_gradient_2D():
     arr_len = 5
     x = torch.arange(5)
     x = x.repeat(5, 1)
-    expected = torch.tensor([0.5] + [1.] * (arr_len - 2) + [0.5])
+    expected = torch.tensor([-1] + [1.] * (arr_len - 1))
     expected = expected.repeat(5, 1)
 
     assert (expected == compute_gradient(x, 1)).all(), 'Non-zero gradient incorrect.'
