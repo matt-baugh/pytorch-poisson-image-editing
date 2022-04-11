@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-PAD_AMOUNT = 8
+PAD_AMOUNT = 4
 stability_value = 1e-8
 INTEGRATION_MODES = ['origin']  # TODO: Implement more, test results
 
@@ -22,9 +22,12 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
     corner_dict = dict(zip(chosen_dimensions, corner_coord.numpy()))
 
     result = target.clone()
-    target_indices = tuple([slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(t_s) for i, (t_s, s_s)
-                            in enumerate(zip(target.shape, source.shape))])
-    target = target[target_indices]
+    target = target[tuple([slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(t_s)
+                           for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))])]
+
+    # Zero edges of mask, to avoid artefacts
+    for d in range(len(mask.shape)):
+        mask[tuple([[0, -1] if i == d else slice(s) for i, s in enumerate(mask.shape)])] = 0
 
     # Pad images in operating dimensions
     pad_amounts = [PAD_AMOUNT if d in chosen_dimensions else 0 for d in range(num_dims)]
@@ -82,10 +85,13 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
     else:
         assert False, 'Invalid integration constant, how did you get here?'
 
-    inner_blended = init_blended[tuple([slice(PAD_AMOUNT, -PAD_AMOUNT) if i in chosen_dimensions else slice(s)
+    # Leave out padding + border, to avoid artefacts
+    inner_blended = init_blended[tuple([slice(PAD_AMOUNT + 1, -PAD_AMOUNT - 1) if i in chosen_dimensions else slice(s)
                                  for i, s in enumerate(init_blended.shape)])]
 
-    result[target_indices] = torch.real(inner_blended - integration_constant)
+    res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + s_s - 1) if i in chosen_dimensions else slice(t_s)
+                         for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))])
+    result[res_indices] = torch.real(inner_blended - integration_constant)
     return result
 
 
