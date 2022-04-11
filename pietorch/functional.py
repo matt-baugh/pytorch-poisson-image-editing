@@ -5,20 +5,26 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor
 
-PAD_AMOUNT = 4
+PAD_AMOUNT = 8
 stability_value = 1e-8
 INTEGRATION_MODES = ['origin']  # TODO: Implement more, test results
 
 
-def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, channels_dim: int = None,
-          green_function: Tensor = None, integration_mode: str = 'origin'):
+def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mix_gradients: bool,
+          channels_dim: int = None, green_function: Tensor = None, integration_mode: str = 'origin'):
     # If green_function is provided, it should match the padded image size
     num_dims = len(target.shape)
     assert integration_mode in INTEGRATION_MODES, f'Invalid integration mode {integration_mode}, should be one of ' \
                                                   f'{INTEGRATION_MODES}'
 
-    # determine dimensions to operate on
+    # Determine dimensions to operate on
     chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
+    corner_dict = dict(zip(chosen_dimensions, corner_coord.numpy()))
+
+    result = target.clone()
+    target_indices = tuple([slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(t_s) for i, (t_s, s_s)
+                            in enumerate(zip(target.shape, source.shape))])
+    target = target[target_indices]
 
     # Pad images in operating dimensions
     pad_amounts = [PAD_AMOUNT if d in chosen_dimensions else 0 for d in range(num_dims)]
@@ -79,7 +85,8 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, cha
     inner_blended = init_blended[tuple([slice(PAD_AMOUNT, -PAD_AMOUNT) if i in chosen_dimensions else slice(s)
                                  for i, s in enumerate(init_blended.shape)])]
 
-    return torch.real(inner_blended - integration_constant)
+    result[target_indices] = torch.real(inner_blended - integration_constant)
+    return result
 
 
 def compute_gradient(image: Tensor, dim: int) -> Tensor:
