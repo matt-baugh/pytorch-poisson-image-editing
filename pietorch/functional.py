@@ -38,10 +38,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, cha
     source_grads = [compute_gradient(source_pad, d) for d in chosen_dimensions]
 
     if mix_gradients:
-        t_g_abs = torch.sum(torch.stack([torch.pow(t_g, 2) for t_g in target_grads]), dim=0)
-        s_g_abs = torch.sum(torch.stack([torch.pow(s_g, 2) for s_g in source_grads]), dim=0)
-        t_g_ge = torch.ge(t_g_abs, s_g_abs)
-        source_grads = [torch.where(t_g_ge, t_g, s_g) for t_g, s_g in zip(target_grads, source_grads)]
+        source_grads = [torch.where(torch.ge(torch.abs(t_g), torch.abs(s_g)), t_g, s_g) for t_g, s_g in zip(target_grads, source_grads)]
 
     # Blend gradients (MIXING IS DONE AT INDIVIDUAL DIMENSION LEVEL!
     # TODO: errode mask first
@@ -86,14 +83,14 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, mix_gradients: bool, cha
 
 
 def compute_gradient(image: Tensor, dim: int) -> Tensor:
-    # Equivalent to reflect padding for F.pad (sadly that doesn't implement arbitrary dimensions)
-    image_pad = torch.cat([image[tuple([slice(1, 2) if i == dim else slice(s) for i, s in enumerate(image.shape)])],
-                           image],
+    image_pad = torch.cat([image[tuple([slice(1) if i == dim else slice(s) for i, s in enumerate(image.shape)])],
+                           image,
+                           image[tuple([slice(-1, s) if i == dim else slice(s) for i, s in enumerate(image.shape)])]],
                           dim=dim)
 
-    front = image_pad[tuple([slice(1 if i == dim else 0, s) for i, s in enumerate(image_pad.shape)])]
-    back = image_pad[tuple([slice(0, -1 if i == dim else s) for i, s in enumerate(image_pad.shape)])]
-    return front - back
+    front = image_pad[tuple([slice(2 if i == dim else 0, s) for i, s in enumerate(image_pad.shape)])]
+    back = image_pad[tuple([slice(0, -2 if i == dim else s) for i, s in enumerate(image_pad.shape)])]
+    return (front - back) / 2
 
 
 def construct_green_function(shape: Tuple[int], channels_dim: int = None, requires_pad=True)\
