@@ -1,6 +1,7 @@
 from itertools import chain
-from typing import Tuple
+from typing import Tuple, Optional
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -10,15 +11,16 @@ stability_value = 1e-8
 INTEGRATION_MODES = ['origin']  # TODO: Implement more, test results
 
 
-def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, use_mix_gradients: bool,
-          channels_dim: int = None, green_function: Tensor = None, integration_mode: str = 'origin'):
+def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mix_gradients: bool,
+          channels_dim: Optional[int] = None, green_function: Optional[Tensor] = None,
+          integration_mode: str = 'origin') -> Tensor:
     # If green_function is provided, it should match the padded image size
     num_dims = len(target.shape)
     assert integration_mode in INTEGRATION_MODES, f'Invalid integration mode {integration_mode}, should be one of ' \
                                                   f'{INTEGRATION_MODES}'
 
     # Determine dimensions to operate on
-    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
     corner_dict = dict(zip(chosen_dimensions, corner_coord.numpy()))
 
     result = target.clone()
@@ -47,7 +49,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, us
     source_grads = [compute_gradient(source_pad, d) for d in chosen_dimensions]
 
     # Blend gradients, MIXING IS DONE AT INDIVIDUAL DIMENSION LEVEL!
-    if use_mix_gradients:
+    if mix_gradients:
         source_grads = [torch.where(torch.ge(torch.abs(t_g), torch.abs(s_g)), t_g, s_g)
                         for t_g, s_g in zip(target_grads, source_grads)]
 
@@ -127,3 +129,11 @@ def construct_green_function(shape: Tuple[int], channels_dim: int = None, requir
     dirac_kernel_fft = torch.fft.fftn(dirac_kernel, dim=chosen_dimensions)
     laplace_kernel_fft = torch.fft.fftn(laplace_kernel, dim=chosen_dimensions)
     return -dirac_kernel_fft / (laplace_kernel_fft + stability_value)
+
+
+def blend_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner_coord: np.ndarray, mix_gradients: bool,
+                channels_dim: Optional[int] = None, green_function: Optional[np.ndarray] = None,
+                integration_mode: str = 'origin') -> np.ndarray:
+    return blend(torch.from_numpy(target), torch.from_numpy(source), torch.from_numpy(mask),
+                 torch.from_numpy(corner_coord), mix_gradients, channels_dim,
+                 torch.from_numpy(green_function) if green_function is not None else None, integration_mode).numpy()
