@@ -10,7 +10,7 @@ stability_value = 1e-8
 INTEGRATION_MODES = ['origin']  # TODO: Implement more, test results
 
 
-def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mix_gradients: bool,
+def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, use_mix_gradients: bool,
           channels_dim: int = None, green_function: Tensor = None, integration_mode: str = 'origin'):
     # If green_function is provided, it should match the padded image size
     num_dims = len(target.shape)
@@ -46,11 +46,11 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
     target_grads = [compute_gradient(target_pad, d) for d in chosen_dimensions]
     source_grads = [compute_gradient(source_pad, d) for d in chosen_dimensions]
 
-    if mix_gradients:
-        source_grads = [torch.where(torch.ge(torch.abs(t_g), torch.abs(s_g)), t_g, s_g) for t_g, s_g in zip(target_grads, source_grads)]
+    # Blend gradients, MIXING IS DONE AT INDIVIDUAL DIMENSION LEVEL!
+    if use_mix_gradients:
+        source_grads = [torch.where(torch.ge(torch.abs(t_g), torch.abs(s_g)), t_g, s_g)
+                        for t_g, s_g in zip(target_grads, source_grads)]
 
-    # Blend gradients (MIXING IS DONE AT INDIVIDUAL DIMENSION LEVEL!
-    # TODO: errode mask first
     if channels_dim is not None:
         mask_pad = mask_pad.unsqueeze(channels_dim)
 
