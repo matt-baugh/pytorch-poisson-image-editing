@@ -14,6 +14,22 @@ INTEGRATION_MODES = ['origin']  # TODO: Implement more, test results
 def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mix_gradients: bool,
           channels_dim: Optional[int] = None, green_function: Optional[Tensor] = None,
           integration_mode: str = 'origin') -> Tensor:
+    """Use Poisson blending to integrate the source image into the target image at the specified location.
+
+    :param target: The image to be blended into.
+    :param source: The image to be blended. Must have the same number of dimensions as target.
+    :param mask: A mask indicating which regions of the source should be blended (allowing for non-rectangular shapes).
+        Must be equal in dimensions to source, excluding the channels dimension if present.
+    :param corner_coord: The location in the target for the lower corner of the source to be blended. Is a spatial
+        coordinate, so does not include channels dimension.
+    :param mix_gradients: Whether the stronger gradient of the two images is used in the blended region. If false, the
+        source gradient is always used. `True` behaves similar to the MIXED_CLONE flag for OpenCV's seamlessClone, while
+        `False` acts like NORMAL_CLONE.
+    :param channels_dim: Optional, indicates a channels dimension, which should not be blended over.
+    :param green_function: Optional, precomputed Green function to be used.
+    :param integration_mode: Method of computing the integration constant. Probably should not be touched.
+    :return: The result of blending the source into the target.
+    """
     # If green_function is provided, it should match the padded image size
     num_dims = len(target.shape)
     assert integration_mode in INTEGRATION_MODES, f'Invalid integration mode {integration_mode}, should be one of ' \
@@ -98,6 +114,14 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
 
 
 def compute_gradient(image: Tensor, dim: int) -> Tensor:
+    """Compute the gradient of the image along the given dimension.
+
+    Maintains the image dimensions by padding using the replication of the input boundary.
+
+    :param image: Image for the gradient to be computed over.
+    :param dim: Dimension for the gradient to be computed along.
+    :return: Gradient image, equal size to `image` input.
+    """
     image_pad = torch.cat([image[tuple([slice(1) if i == dim else slice(s) for i, s in enumerate(image.shape)])],
                            image,
                            image[tuple([slice(-1, s) if i == dim else slice(s) for i, s in enumerate(image.shape)])]],
@@ -108,8 +132,14 @@ def compute_gradient(image: Tensor, dim: int) -> Tensor:
     return (front - back) / 2
 
 
-def construct_green_function(shape: Tuple[int], channels_dim: int = None, requires_pad=True)\
-        -> Tensor:
+def construct_green_function(shape: Tuple[int], channels_dim: int = None, requires_pad: bool = True) -> Tensor:
+    """Construct Green function to be used in convolution within Fourier space.
+
+    :param shape: Target shape of Green function.
+    :param channels_dim: Optional, indicates if shape includes a channels dimension, which should not be convolved over.
+    :param requires_pad: Indicates whether padding must be applied to `shape` prior to Green function construction.
+    :return: Green function in the Fourier domain.
+    """
     num_dims = len(shape)
     chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
     # Aim is to match chosen dimensions of input shape (padding if necessary), but set others to size 1.
@@ -134,6 +164,7 @@ def construct_green_function(shape: Tuple[int], channels_dim: int = None, requir
 def blend_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner_coord: np.ndarray, mix_gradients: bool,
                 channels_dim: Optional[int] = None, green_function: Optional[np.ndarray] = None,
                 integration_mode: str = 'origin') -> np.ndarray:
+
     return blend(torch.from_numpy(target), torch.from_numpy(source), torch.from_numpy(mask),
                  torch.from_numpy(corner_coord), mix_gradients, channels_dim,
                  torch.from_numpy(green_function) if green_function is not None else None, integration_mode).numpy()
