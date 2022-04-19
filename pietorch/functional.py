@@ -105,7 +105,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
 
     # Leave out padding + border, to avoid artefacts
     inner_blended = init_blended[tuple([slice(PAD_AMOUNT + 1, -PAD_AMOUNT - 1) if i in chosen_dimensions else slice(s)
-                                 for i, s in enumerate(init_blended.shape)])]
+                                        for i, s in enumerate(init_blended.shape)])]
 
     res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + s_s - 1) if i in chosen_dimensions else slice(t_s)
                          for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))])
@@ -164,7 +164,32 @@ def construct_green_function(shape: Tuple[int], channels_dim: int = None, requir
 def blend_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner_coord: np.ndarray, mix_gradients: bool,
                 channels_dim: Optional[int] = None, green_function: Optional[np.ndarray] = None,
                 integration_mode: str = 'origin') -> np.ndarray:
-
     return blend(torch.from_numpy(target), torch.from_numpy(source), torch.from_numpy(mask),
                  torch.from_numpy(corner_coord), mix_gradients, channels_dim,
                  torch.from_numpy(green_function) if green_function is not None else None, integration_mode).numpy()
+
+
+def blend_wide(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mix_gradients: bool,
+               channels_dim: Optional[int] = None, green_function: Optional[Tensor] = None,
+               integration_mode: str = 'origin') -> Tensor:
+    # Zero edges of mask, to avoid artefacts
+    for d in range(len(mask.shape)):
+        mask[tuple([[0, -1] if i == d else slice(s) for i, s in enumerate(mask.shape)])] = 0
+
+    num_dims = len(target.shape)
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
+    corner_dict = dict(zip(chosen_dimensions, corner_coord.numpy()))
+
+    indices_to_blend = [slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(t_s)
+                        for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))]
+
+    new_source = torch.zeros_like(target)
+    new_source[tuple(indices_to_blend)] = source
+
+    new_mask = torch.zeros([target.shape[d] for d in chosen_dimensions])
+    if channels_dim is not None:
+        del indices_to_blend[channels_dim]
+    new_mask[tuple(indices_to_blend)] = mask
+
+    return blend(target, new_source, new_mask, torch.tensor([0] * len(chosen_dimensions)), mix_gradients, channels_dim,
+                 green_function, integration_mode)
