@@ -50,3 +50,7 @@ result = blend(target, source, mask, corner, True, channels_dim=0)
 ```
 
 A wide variety of full examples are given in [the examples notebook](https://github.com/matt-baugh/pytorch-poisson-image-editing/blob/master/examples.ipynb).
+
+## Project TODO
+
+ - Change numpy wrapper to only convert affected area of target image, as rest of image should remain unchanged.
