@@ -16,6 +16,7 @@ setup(
     long_description=long_description,
     install_requirements=[
         'torch>=1.7',  # torch.fft.fftn was added in 1.7, haven't actually tested lol.
+        'scipy>=1.4',  # similar, scipy changed it's fft interface in version 1.4, haven't tested exact versions
         'numpy'
     ]
 )
