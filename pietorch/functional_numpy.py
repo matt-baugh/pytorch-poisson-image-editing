@@ -3,6 +3,7 @@ from typing import Tuple, Optional
 import numpy as np
 import scipy.fft
 from scipy.fft import fftn, ifftn
+from scipy import ndimage
 
 from .functional import stability_value, INTEGRATION_MODES
 from .utils import PAD_AMOUNT, construct_dirac_laplacian
@@ -155,8 +156,6 @@ def blend_wide_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, c
 # Source material:
 # https://github.com/opencv/opencv/blob/3f4ffe7844cead4e406bfb0067e9dae2ff9247f3/modules/photo/src/seamless_cloning_impl.cpp#L323
 # https://web.media.mit.edu/~raskar/photo/code.pdf
-# Possible maths help, need to read more:
-# https://www.uio.no/studier/emner/matnat/ifi/nedlagte-emner/INF-MAT4350/h08/undervisningsmateriale/chap10slides.pdf
 def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner_coord: np.ndarray,
                     mix_gradients: bool, channels_dim: Optional[int] = None):
     print('WIP, USE CAREFULLY!')
@@ -175,8 +174,9 @@ def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, co
         mask[tuple([[0, -1] if i == d else slice(s) for i, s in enumerate(mask.shape)])] = 0
 
     # Compute gradients
-    target_grads = np.gradient(target, axis=chosen_dimensions)
-    source_grads = np.gradient(source, axis=chosen_dimensions)
+    grad_kernel_1 = np.array([0, -1, 1])
+    target_grads = [ndimage.correlate1d(target, grad_kernel_1, axis=d, mode='mirror') for d in chosen_dimensions]
+    source_grads = [ndimage.correlate1d(source, grad_kernel_1, axis=d, mode='mirror') for d in chosen_dimensions]
 
     # Blend gradients, MIXING IS DONE AT INDIVIDUAL DIMENSION LEVEL!
     if mix_gradients:
@@ -189,22 +189,34 @@ def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, co
     blended_grads = [t_g * (1 - mask) + s_g * mask for t_g, s_g in zip(target_grads, source_grads)]
 
     # Compute laplacian
-    laplacian = sum([np.gradient(grad, axis=grad_dim) for grad, grad_dim in zip(blended_grads, chosen_dimensions)])
+    grad_kernel_2 = np.array([-1, 1, 0])
+    laplacian = sum([ndimage.correlate1d(grad, grad_kernel_2, axis=grad_dim, mode='mirror')
+                     for grad, grad_dim in zip(blended_grads, chosen_dimensions)])
 
     boundary_points = target.copy()
     # Zero all pixels except boundaries
     boundary_points[tuple([slice(1, s - 1) if i in chosen_dimensions else slice(s)
                            for i, s in enumerate(boundary_points.shape)])] = 0
     # Compute laplacian for boundaries
-    boundary_points = sum([np.gradient(g, axis=i)
-                           for i, g in zip(chosen_dimensions, np.gradient(boundary_points, axis=chosen_dimensions))])
+    lap_kernel = np.zeros([3 if i in chosen_dimensions else 1 for i in range(num_dims)])
+    k_centre = [1 if i in chosen_dimensions else 0 for i in range(num_dims)]
+    lap_kernel[tuple(k_centre)] = -2 * len(chosen_dimensions)
+    for c_d in chosen_dimensions:
+        for c_c in [0, 2]:
+            lap_kernel[tuple([c_c if i == c_d else k for i, k in enumerate(k_centre)])] = 1
+
+    boundary_points = ndimage.correlate(boundary_points, lap_kernel, mode='mirror')
+    # boundary_points = sum([np.gradient(g, axis=i)
+    #                        for i, g in zip(chosen_dimensions, np.gradient(boundary_points, axis=chosen_dimensions))])
 
     # Subtract boundary's influence from laplacian
     mod_diff = laplacian - boundary_points
     mod_diff = mod_diff[tuple([slice(1, -1) if i in chosen_dimensions else slice(s)
                                for i, s in enumerate(mod_diff.shape)])]
 
-    transformed = scipy.fft.dstn(mod_diff, axes=chosen_dimensions)
+    # I identified the dst type as both reference implementations implement the DST via a DFFT, and the matlab code
+    # implementation of the inverse also matches the inverse formulation for type 1.
+    transformed = scipy.fft.dstn(mod_diff, type=1, axes=chosen_dimensions)
 
     eigenvalues = [2 * np.cos(np.pi * (np.arange(mod_diff.shape[i]) + 1) / (target.shape[i] - 1)) - 2
                    for i in chosen_dimensions]
@@ -213,7 +225,7 @@ def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, co
                   for i, e in zip(chosen_dimensions, eigenvalues)])
     transformed /= denorm
 
-    blended = scipy.fft.idstn(transformed, axes=chosen_dimensions)
+    blended = scipy.fft.idstn(transformed, type=1, axes=chosen_dimensions)
 
     res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + 1 + s_s) if i in chosen_dimensions else slice(t_s)
                          for i, (t_s, s_s) in enumerate(zip(target.shape, blended.shape))])
