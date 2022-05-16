@@ -1,6 +1,7 @@
 from typing import Tuple, Optional
 
 import numpy as np
+import scipy.fft
 from scipy.fft import fftn, ifftn
 
 from .functional import stability_value, INTEGRATION_MODES
@@ -70,9 +71,7 @@ def blend_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner
     blended_grads = [t_g * (1 - mask_pad) + s_g * mask_pad for t_g, s_g in zip(target_grads, source_grads)]
 
     # Compute laplacian
-    laplacian = np.sum(np.stack([np.gradient(grad, axis=grad_dim)
-                                 for grad, grad_dim in zip(blended_grads, chosen_dimensions)]),
-                       axis=0)
+    laplacian = sum([np.gradient(grad, axis=grad_dim) for grad, grad_dim in zip(blended_grads, chosen_dimensions)])
 
     # Compute green function if not provided
     if green_function is None:
@@ -107,7 +106,7 @@ def blend_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner
     return result
 
 
-def construct_green_function_numpy(shape: Tuple[int], channels_dim: int = None, requires_pad: bool = True)\
+def construct_green_function_numpy(shape: Tuple[int], channels_dim: int = None, requires_pad: bool = True) \
         -> np.ndarray:
     """Construct Green function to be used in convolution within Fourier space.
 
@@ -150,3 +149,73 @@ def blend_wide_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, c
 
     return blend_numpy(target, new_source, new_mask, np.array([0] * len(chosen_dimensions)), mix_gradients,
                        channels_dim, green_function, integration_mode)
+
+
+# Trying to replicate OpenCV's blending, not going well...
+# Source material:
+# https://github.com/opencv/opencv/blob/3f4ffe7844cead4e406bfb0067e9dae2ff9247f3/modules/photo/src/seamless_cloning_impl.cpp#L323
+# https://web.media.mit.edu/~raskar/photo/code.pdf
+# Possible maths help, need to read more:
+# https://www.uio.no/studier/emner/matnat/ifi/nedlagte-emner/INF-MAT4350/h08/undervisningsmateriale/chap10slides.pdf
+def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner_coord: np.ndarray,
+                    mix_gradients: bool, channels_dim: Optional[int] = None):
+    print('WIP, USE CAREFULLY!')
+
+    num_dims = len(target.shape)
+    # Determine dimensions to operate on
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
+    corner_dict = dict(zip(chosen_dimensions, corner_coord))
+
+    result = target.copy()
+    target = target[tuple([slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(t_s)
+                           for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))])]
+
+    # Zero edges of mask, to avoid artefacts
+    for d in range(len(mask.shape)):
+        mask[tuple([[0, -1] if i == d else slice(s) for i, s in enumerate(mask.shape)])] = 0
+
+    # Compute gradients
+    target_grads = np.gradient(target, axis=chosen_dimensions)
+    source_grads = np.gradient(source, axis=chosen_dimensions)
+
+    # Blend gradients, MIXING IS DONE AT INDIVIDUAL DIMENSION LEVEL!
+    if mix_gradients:
+        source_grads = [np.where(np.abs(t_g) >= np.abs(s_g), t_g, s_g)
+                        for t_g, s_g in zip(target_grads, source_grads)]
+
+    if channels_dim is not None:
+        mask = np.expand_dims(mask, channels_dim)
+
+    blended_grads = [t_g * (1 - mask) + s_g * mask for t_g, s_g in zip(target_grads, source_grads)]
+
+    # Compute laplacian
+    laplacian = sum([np.gradient(grad, axis=grad_dim) for grad, grad_dim in zip(blended_grads, chosen_dimensions)])
+
+    boundary_points = target.copy()
+    # Zero all pixels except boundaries
+    boundary_points[tuple([slice(1, s - 1) if i in chosen_dimensions else slice(s)
+                           for i, s in enumerate(boundary_points.shape)])] = 0
+    # Compute laplacian for boundaries
+    boundary_points = sum([np.gradient(g, axis=i)
+                           for i, g in zip(chosen_dimensions, np.gradient(boundary_points, axis=chosen_dimensions))])
+
+    # Subtract boundary's influence from laplacian
+    mod_diff = laplacian - boundary_points
+    mod_diff = mod_diff[tuple([slice(1, -1) if i in chosen_dimensions else slice(s)
+                               for i, s in enumerate(mod_diff.shape)])]
+
+    transformed = scipy.fft.dstn(mod_diff, axes=chosen_dimensions)
+
+    eigenvalues = [2 * np.cos(np.pi * (np.arange(mod_diff.shape[i]) + 1) / (target.shape[i] - 1)) - 2
+                   for i in chosen_dimensions]
+
+    denorm = sum([e.reshape(tuple([-1 if j == i else 1 for j in range(num_dims)]))
+                  for i, e in zip(chosen_dimensions, eigenvalues)])
+    transformed /= denorm
+
+    blended = scipy.fft.idstn(transformed, axes=chosen_dimensions)
+
+    res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + 1 + s_s) if i in chosen_dimensions else slice(t_s)
+                         for i, (t_s, s_s) in enumerate(zip(target.shape, blended.shape))])
+    result[res_indices] = blended
+    return result
