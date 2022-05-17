@@ -1,4 +1,5 @@
 from typing import Tuple, Optional
+import warnings
 
 import numpy as np
 import scipy.fft
@@ -158,7 +159,7 @@ def blend_wide_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, c
 # https://web.media.mit.edu/~raskar/photo/code.pdf
 def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner_coord: np.ndarray,
                     mix_gradients: bool, channels_dim: Optional[int] = None):
-    print('WIP, USE CAREFULLY!')
+    warnings.warn('blend_dst_numpy is a work in progress, use carefully!')
 
     num_dims = len(target.shape)
     # Determine dimensions to operate on
