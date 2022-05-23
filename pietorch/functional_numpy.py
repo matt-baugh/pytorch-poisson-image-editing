@@ -39,12 +39,12 @@ def blend_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner
     corner_dict = dict(zip(chosen_dimensions, corner_coord))
 
     result = target.copy()
-    target = target[tuple([slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(t_s)
-                           for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))])]
+    target = target[tuple([slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(None)
+                           for i, s_s in enumerate(source.shape)])]
 
     # Zero edges of mask, to avoid artefacts
     for d in range(len(mask.shape)):
-        mask[tuple([[0, -1] if i == d else slice(s) for i, s in enumerate(mask.shape)])] = 0
+        mask[tuple([[0, -1] if i == d else slice(None) for i in range(len(mask.shape))])] = 0
 
     # Pad images in operating dimensions
     pad_amounts = [PAD_AMOUNT if d in chosen_dimensions else 0 for d in range(num_dims)]
@@ -93,17 +93,17 @@ def blend_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner
 
     # Use boundaries to determine integration constant, and extract inner blended image
     if integration_mode == 'origin':
-        integration_constant = init_blended[tuple([slice(1) if i in chosen_dimensions else slice(s)
-                                                   for i, s in enumerate(init_blended.shape)])]
+        integration_constant = init_blended[tuple([slice(1) if i in chosen_dimensions else slice(None)
+                                                   for i in range(num_dims)])]
     else:
         assert False, 'Invalid integration constant, how did you get here?'
 
     # Leave out padding + border, to avoid artefacts
-    inner_blended = init_blended[tuple([slice(PAD_AMOUNT + 1, -PAD_AMOUNT - 1) if i in chosen_dimensions else slice(s)
-                                        for i, s in enumerate(init_blended.shape)])]
+    inner_blended = init_blended[tuple([slice(PAD_AMOUNT + 1, -PAD_AMOUNT - 1) if i in chosen_dimensions else slice(None)
+                                        for i in range(num_dims)])]
 
-    res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + s_s - 1) if i in chosen_dimensions else slice(t_s)
-                         for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))])
+    res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + s_s - 1) if i in chosen_dimensions else slice(None)
+                         for i, s_s in enumerate(source.shape)])
     result[res_indices] = np.real(inner_blended - integration_constant)
     return result
 
@@ -132,14 +132,14 @@ def blend_wide_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, c
                      green_function: Optional[np.ndarray] = None, integration_mode: str = 'origin') -> np.ndarray:
     # Zero edges of mask, to avoid artefacts
     for d in range(len(mask.shape)):
-        mask[tuple([[0, -1] if i == d else slice(s) for i, s in enumerate(mask.shape)])] = 0
+        mask[tuple([[0, -1] if i == d else slice(None) for i, s in range(len(mask.shape))])] = 0
 
     num_dims = len(target.shape)
     chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
     corner_dict = dict(zip(chosen_dimensions, corner_coord))
 
-    indices_to_blend = [slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(t_s)
-                        for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))]
+    indices_to_blend = [slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(None)
+                        for i, s_s in enumerate(source.shape)]
 
     new_source = np.zeros_like(target)
     new_source[tuple(indices_to_blend)] = source
@@ -167,8 +167,8 @@ def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, co
     corner_dict = dict(zip(chosen_dimensions, corner_coord))
 
     result = target.copy()
-    target = target[tuple([slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(t_s)
-                           for i, (t_s, s_s) in enumerate(zip(target.shape, source.shape))])]
+    target = target[tuple([slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(None)
+                           for i, s_s in enumerate(source.shape)])]
 
     # Zero edges of mask, to avoid artefacts
     for d in range(len(mask.shape)):
@@ -196,7 +196,7 @@ def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, co
 
     boundary_points = target.copy()
     # Zero all pixels except boundaries
-    boundary_points[tuple([slice(1, s - 1) if i in chosen_dimensions else slice(s)
+    boundary_points[tuple([slice(1, s - 1) if i in chosen_dimensions else slice(None)
                            for i, s in enumerate(boundary_points.shape)])] = 0
     # Compute laplacian for boundaries
     lap_kernel = np.zeros([3 if i in chosen_dimensions else 1 for i in range(num_dims)])
@@ -212,7 +212,7 @@ def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, co
 
     # Subtract boundary's influence from laplacian
     mod_diff = laplacian - boundary_points
-    mod_diff = mod_diff[tuple([slice(1, -1) if i in chosen_dimensions else slice(s)
+    mod_diff = mod_diff[tuple([slice(1, -1) if i in chosen_dimensions else slice(None)
                                for i, s in enumerate(mod_diff.shape)])]
 
     # I identified the dst type as both reference implementations implement the DST via a DFFT, and the matlab code
@@ -228,7 +228,7 @@ def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, co
 
     blended = scipy.fft.idstn(transformed, type=1, axes=chosen_dimensions)
 
-    res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + 1 + s_s) if i in chosen_dimensions else slice(t_s)
-                         for i, (t_s, s_s) in enumerate(zip(target.shape, blended.shape))])
+    res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + 1 + s_s) if i in chosen_dimensions else slice(None)
+                         for i, s_s in enumerate(blended.shape)])
     result[res_indices] = blended
     return result
