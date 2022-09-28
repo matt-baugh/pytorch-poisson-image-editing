@@ -156,7 +156,6 @@ def blend_wide_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, c
                        channels_dim, green_function, integration_mode)
 
 
-# Trying to replicate OpenCV's blending, not going well...
 # Source material:
 # https://github.com/opencv/opencv/blob/3f4ffe7844cead4e406bfb0067e9dae2ff9247f3/modules/photo/src/seamless_cloning_impl.cpp#L323
 # https://web.media.mit.edu/~raskar/photo/code.pdf
