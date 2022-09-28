@@ -12,7 +12,7 @@ setup(
     license='',
     author='Matthew Baugh',
     author_email='matthew.baugh17@imperial.ac.uk',
-    description='N-dimensional Poisson image editing implemented with Pytorch',
+    description='N-dimensional Poisson image editing implemented with Pytorch and NumPy',
     long_description=long_description,
     install_requirements=[
         'torch>=1.7',  # torch.fft.fftn was added in 1.7, haven't actually tested lol.

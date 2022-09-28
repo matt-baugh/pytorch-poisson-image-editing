@@ -8,7 +8,7 @@ from torch import Tensor
 from .utils import PAD_AMOUNT, construct_dirac_laplacian
 
 stability_value = 1e-8
-INTEGRATION_MODES = ['origin']  # TODO: Implement more, test results
+INTEGRATION_MODES = ['origin']
 
 
 def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mix_gradients: bool,
@@ -32,11 +32,13 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
     """
     # If green_function is provided, it should match the padded image size
     num_dims = len(target.shape)
+    if channels_dim is not None:
+        channels_dim %= num_dims
     assert integration_mode in INTEGRATION_MODES, f'Invalid integration mode {integration_mode}, should be one of ' \
                                                   f'{INTEGRATION_MODES}'
 
     # Determine dimensions to operate on
-    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
     corner_dict = dict(zip(chosen_dimensions, corner_coord.numpy()))
 
     result = target.clone()
@@ -139,7 +141,9 @@ def blend_wide(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tenso
         mask[tuple([[0, -1] if i == d else slice(None) for i in range(len(mask.shape))])] = 0
 
     num_dims = len(target.shape)
-    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
+    if channels_dim is not None:
+        channels_dim %= num_dims
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
     corner_dict = dict(zip(chosen_dimensions, corner_coord.numpy()))
 
     indices_to_blend = [slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(None)

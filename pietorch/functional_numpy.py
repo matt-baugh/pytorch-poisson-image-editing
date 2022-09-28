@@ -1,5 +1,4 @@
 from typing import Tuple, Optional
-import warnings
 
 import numpy as np
 import scipy.fft
@@ -31,11 +30,13 @@ def blend_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner
     """
     # If green_function is provided, it should match the padded image size
     num_dims = len(target.shape)
+    if channels_dim is not None:
+        channels_dim %= num_dims
     assert integration_mode in INTEGRATION_MODES, f'Invalid integration mode {integration_mode}, should be one of ' \
                                                   f'{INTEGRATION_MODES}'
 
     # Determine dimensions to operate on
-    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
     corner_dict = dict(zip(chosen_dimensions, corner_coord))
 
     result = target.copy()
@@ -135,7 +136,9 @@ def blend_wide_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, c
         mask[tuple([[0, -1] if i == d else slice(None) for i, s in range(len(mask.shape))])] = 0
 
     num_dims = len(target.shape)
-    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
+    if channels_dim is not None:
+        channels_dim %= num_dims
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
     corner_dict = dict(zip(chosen_dimensions, corner_coord))
 
     indices_to_blend = [slice(corner_dict[i], corner_dict[i] + s_s) if i in chosen_dimensions else slice(None)
@@ -159,11 +162,11 @@ def blend_wide_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, c
 # https://web.media.mit.edu/~raskar/photo/code.pdf
 def blend_dst_numpy(target: np.ndarray, source: np.ndarray, mask: np.ndarray, corner_coord: np.ndarray,
                     mix_gradients: bool, channels_dim: Optional[int] = None):
-    warnings.warn('blend_dst_numpy is a work in progress, use carefully!')
 
     num_dims = len(target.shape)
-    # Determine dimensions to operate on
-    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]  # TODO: allow for negative dimensions
+    if channels_dim is not None:
+        channels_dim %= num_dims    # Determine dimensions to operate on
+    chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
     corner_dict = dict(zip(chosen_dimensions, corner_coord))
 
     result = target.copy()
