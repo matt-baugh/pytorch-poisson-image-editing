@@ -30,7 +30,9 @@ Why use it?
 
 ### Using pip
 
-... coming soon ...
+```bash
+pip install pie-torch
+```
 
 ### Manually
 Clone PIE-torch repository and install the package locally:

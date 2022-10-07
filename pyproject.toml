@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pie-torch"
+version = "0.0.1"
+authors = [
+    { name="Matthew Baugh", email="matthew.baugh17@imperial.ac.uk" },
+]
+description = "N-dimensional Poisson image editing implemented with Pytorch and NumPy"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+dependencies = [
+    "torch>=1.7",  # torch.fft.fftn was added in 1.7, haven't actually tested lol.
+    "scipy>=1.4",  # similar, scipy changed it's fft interface in version 1.4, haven't tested exact versions
+    "numpy"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/matt-baugh/pytorch-poisson-image-editing"
