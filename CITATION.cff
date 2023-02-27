@@ -1,0 +1,24 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: PIE-torch
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Matthew
+    family-names: Baugh
+    email: matthew.baugh17@imperial.ac.uk
+    affiliation: Imperial College London
+    orcid: 'https://orcid.org/0000-0001-6252-7658'
+repository-code: >-
+  https://github.com/matt-baugh/pytorch-poisson-image-editing
+repository: 'https://pypi.org/project/pie-torch/0.0.1/'
+abstract: 'Fast, n-dimensional Poisson image editing.'
+keywords:
+  - pytorch
+  - numpy
+  - poisson-image-editing
+license: MIT
