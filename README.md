@@ -63,4 +63,26 @@ corner : torch.Tensor = ... # [y, x] coordinate of location in target for source
 result = blend(target, source, mask, corner, True, channels_dim=0)
 ```
 
-A wide variety of full examples are given in [the examples notebook](https://github.com/matt-baugh/pytorch-poisson-image-editing/blob/master/examples.ipynb).
+## Examples
+A wide variety of full examples (including how to create the two below) are given in [the examples notebook](https://github.com/matt-baugh/pytorch-poisson-image-editing/blob/master/examples.ipynb).
+
+### 2D mixed gradient comparison with OpenCV's `seamlessClone`:
+
+Target | Source 
+:-------------------------:|:-------------------------:
+![](./example_images/mug.png)  | <img src="./example_images/brick_texture.jpg" alt="drawing" width="512"/>
+
+**Results**:
+
+![](./example_images/mixed_gradients_blending_comparison.png)
+
+
+### 3D mixed gradient blending over spatial and temporal dimensions:
+
+Target | Source
+:-------------------------:|:-------------------------:
+![](./example_images/wave.gif)  | <img src="./example_images/splat.gif" alt="drawing" width="300" height="300"/>
+
+**Result**:
+
+![](./example_images/wave_splat.gif)
