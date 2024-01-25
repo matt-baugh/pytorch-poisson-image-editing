@@ -93,7 +93,8 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
             else:
                 assert green_function.shape[d] == 1, f'Green function should have size 1 in non-chosen dimension ' \
                                                      f'{d}: has {green_function.shape[d]}.'
-
+    if laplacian.device != green_function.device:
+        green_function = green_function.to(laplacian.device) 
     # Apply green function convolution
     init_blended = torch.fft.ifftn(torch.fft.fftn(laplacian, dim=chosen_dimensions) * green_function,
                                    dim=chosen_dimensions)
