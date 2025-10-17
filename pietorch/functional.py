@@ -1,8 +1,9 @@
+from itertools import chain
+from typing import Tuple, Optional
+
 import torch
 import torch.nn.functional as F
-from itertools import chain
 from torch import Tensor
-from typing import Tuple, Optional
 
 from .utils import PAD_AMOUNT, construct_dirac_laplacian
 
@@ -43,7 +44,8 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
     for tensor, device in device_check_dict.items():
         if tensor == 'green_function' and device is None:
             continue
-        assert device != target_device, f"target and {tensor} expected to be on the same device, found {target_device} and {device}!"
+        if device != target_device:
+            raise ValueError(f"target and {tensor} expected to be on the same device, found {target_device} and {device}!")
 
     # Determine dimensions to operate on
     chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
@@ -91,8 +93,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
 
     # Compute green function if not provided
     if green_function is None:
-        green_function = construct_green_function(laplacian.shape, channels_dim, requires_pad=False,
-                                                  device=target_device)
+        green_function = construct_green_function(laplacian.shape, channels_dim, requires_pad=False, device=target_device)
     else:
         for d in range(num_dims):
             if d in chosen_dimensions:
@@ -115,9 +116,8 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
         assert False, 'Invalid integration constant, how did you get here?'
 
     # Leave out padding + border, to avoid artefacts
-    inner_blended = init_blended[
-        tuple([slice(PAD_AMOUNT + 1, -PAD_AMOUNT - 1) if i in chosen_dimensions else slice(None)
-               for i in range(num_dims)])]
+    inner_blended = init_blended[tuple([slice(PAD_AMOUNT + 1, -PAD_AMOUNT - 1) if i in chosen_dimensions else slice(None)
+                                        for i in range(num_dims)])]
 
     res_indices = tuple([slice(corner_dict[i] + 1, corner_dict[i] + s_s - 1) if i in chosen_dimensions else slice(None)
                          for i, s_s in enumerate(source.shape)])
@@ -125,8 +125,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
     return result
 
 
-def construct_green_function(shape: Tuple[int], channels_dim: int = None, requires_pad: bool = True,
-                             device: Optional[torch.device] = None) -> Tensor:
+def construct_green_function(shape: Tuple[int], channels_dim: int = None, requires_pad: bool = True, device: Optional[torch.device] = None) -> Tensor:
     """Construct Green function to be used in convolution within Fourier space.
 
     :param shape: Target shape of Green function.
@@ -138,7 +137,7 @@ def construct_green_function(shape: Tuple[int], channels_dim: int = None, requir
     num_dims = len(shape)
     chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
 
-    dirac_kernel, laplace_kernel = construct_dirac_laplacian(torch, shape, channels_dim, requires_pad)
+    dirac_kernel, laplace_kernel = construct_dirac_laplacian(torch, shape, channels_dim, requires_pad, device)
 
     dirac_kernel_fft = torch.fft.fftn(dirac_kernel, dim=chosen_dimensions)
     laplace_kernel_fft = torch.fft.fftn(laplace_kernel, dim=chosen_dimensions)
