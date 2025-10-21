@@ -37,6 +37,16 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
     assert integration_mode in INTEGRATION_MODES, f'Invalid integration mode {integration_mode}, should be one of ' \
                                                   f'{INTEGRATION_MODES}'
 
+    device_check_dict = {'source': source.device, 'mask': mask.device, 'green_function':
+        green_function.device if green_function else None}
+
+    target_device = target.device
+    for tensor, device in device_check_dict.items():
+        if tensor == 'green_function' and device is None:
+            continue
+        if device != target_device:
+            raise ValueError(f"target and {tensor} expected to be on the same device, found {target_device} and {device}!")
+
     # Determine dimensions to operate on
     chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
     corner_dict = dict(zip(chosen_dimensions, corner_coord.numpy()))
@@ -83,7 +93,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
 
     # Compute green function if not provided
     if green_function is None:
-        green_function = construct_green_function(laplacian.shape, channels_dim, requires_pad=False)
+        green_function = construct_green_function(laplacian.shape, channels_dim, requires_pad=False, device=target_device)
     else:
         for d in range(num_dims):
             if d in chosen_dimensions:
@@ -115,18 +125,19 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
     return result
 
 
-def construct_green_function(shape: Tuple[int], channels_dim: int = None, requires_pad: bool = True) -> Tensor:
+def construct_green_function(shape: Tuple[int], channels_dim: int = None, requires_pad: bool = True, device: Optional[torch.device] = None) -> Tensor:
     """Construct Green function to be used in convolution within Fourier space.
 
     :param shape: Target shape of Green function.
     :param channels_dim: Optional, indicates if shape includes a channels dimension, which should not be convolved over.
     :param requires_pad: Indicates whether padding must be applied to `shape` prior to Green function construction.
+    :param device: Optional, indicates the device onto which construct the tensor.
     :return: Green function in the Fourier domain.
     """
     num_dims = len(shape)
     chosen_dimensions = [d for d in range(num_dims) if d != channels_dim]
 
-    dirac_kernel, laplace_kernel = construct_dirac_laplacian(torch, shape, channels_dim, requires_pad)
+    dirac_kernel, laplace_kernel = construct_dirac_laplacian(torch, shape, channels_dim, requires_pad, device)
 
     dirac_kernel_fft = torch.fft.fftn(dirac_kernel, dim=chosen_dimensions)
     laplace_kernel_fft = torch.fft.fftn(laplace_kernel, dim=chosen_dimensions)
