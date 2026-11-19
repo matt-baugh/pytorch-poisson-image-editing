@@ -38,7 +38,7 @@ def blend(target: Tensor, source: Tensor, mask: Tensor, corner_coord: Tensor, mi
                                                   f'{INTEGRATION_MODES}'
 
     device_check_dict = {'source': source.device, 'mask': mask.device, 'green_function':
-        green_function.device if green_function else None}
+        green_function.device if green_function is not None else None}
 
     target_device = target.device
     for tensor, device in device_check_dict.items():
